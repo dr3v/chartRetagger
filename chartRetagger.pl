@@ -1,7 +1,15 @@
-################
-# Chart retagger
-# - dr3v
-################
+################################
+# Chart retagger - dr3v
+#####
+# To-do:
+# - alter backup logic to only backup files queued for editing!!!
+# ---- leave logic in to take "latestBackup" if it doesn't already exist, couldn't hurt
+# - add communication about initial backup files...
+# - add communication about which files are going to be edited before committing
+# - research/resolve genre names with spaces between each char?
+# - investigate + fix "file/dir" incorrect errors when reading files
+# - allow multiple-value entry for editable field values
+################################
 use Win32::Console::ANSI;
 use Term::ANSIColor;
 
@@ -13,11 +21,12 @@ print color('reset');
 
 ############################
 # Get list of song.ini files
+green("Reading files....this may take a minute.\n");
 $iniList = (`dir /s/b *song.ini`); chomp $iniList;
 @iniFiles = split("\n",$iniList);
 
 ###########################################
-# Create latest backups of song.inis, just in case
+# Create backups of all song.ini files, just in case
 foreach(@iniFiles){
     $file = $_;
     $dir = $file;
@@ -128,7 +137,6 @@ green("to quit the program.\nPress ENTER to show list of editable chart fields.\
 $welcomeRes = (<STDIN>); chomp $welcomeRes;
 
 @uniqueFields = uniq(@fields);
-
 @uniqueFields = sort @uniqueFields;
 
 $availableFields = (join("\n",@uniqueFields)); chomp $availableFields;
@@ -330,8 +338,8 @@ sub editSongs {
     yellow($updatedFiles . "\n");
 
     #########################
-    # Ask to edit more songs?
-    # This part doesn't really work... so we turn it off.. 
+    # Ask to edit more songs
+    # This part doesn't really work... so I turned it off.. 
 
     # green("Do you want to edit more songs (y/n)? ");
 
