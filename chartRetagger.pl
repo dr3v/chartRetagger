@@ -17,7 +17,7 @@ $iniList = (`dir /s/b *song.ini`); chomp $iniList;
 @iniFiles = split("\n",$iniList);
 
 ###########################################
-# Create backups of song.inis, just in case
+# Create latest backups of song.inis, just in case
 foreach(@iniFiles){
     $file = $_;
     $dir = $file;
@@ -34,14 +34,14 @@ foreach(@iniFiles){
         # print("IT THERE!!");
 
         unlink("$dir/song.latestBackup.ini");
-        `copy "$file" "$dir\\song.lastBackup.ini"`;
-        `copy "$file" "$dir\\song.bak$epoch.ini"`;
+        `copy "$file" "$dir\\song.latestBackup.ini"`;
+        # `copy "$file" "$dir\\song.bak$epoch.ini"`;
     } else {
         # DEBUG
         # "naaaaaaaaaah";
 
         `copy "$file" "$dir\\song.latestBackup.ini"`;
-        `copy "$file" "$dir\\song.bak$epoch.ini"`;
+        # `copy "$file" "$dir\\song.bak$epoch.ini"`;
     };
 }
 
@@ -160,6 +160,9 @@ if (grep {m/^$editField$/} @fields){
 ####################################
 # Ask what value they want to change
 @matchedVals = grep(/^$editField/,@masterValues);
+
+# sort vals
+@matchedVals = sort @matchedVals;
 $matches = join("\n",@matchedVals);
 
 # split genres and make array of valid values
@@ -187,13 +190,13 @@ $editValue = (<STDIN>); chomp $editValue;
 
 # Check if request is valid
 
-if(grep {m/$editValue/} @validVals){
+if(grep {m/$editValue/} @exitP){
+    exitSub();
+} elsif (grep {/$editValue/} @validVals) {
     # we're good
     
     # DEBUG
     # print("yayayaya");
-} elsif (grep {m/$editValue/} @exitP) {
-    exitSub();
 } else {
     clearScr();
     red("\n" . '"' . $editValue . '"' . " is not a valid value from the matched field list. Try again!\n");
@@ -273,7 +276,10 @@ sub editSongs {
         $file = $_; chomp $file;
 
         $dir = $file;
-        $dir =~ s/^(.*\\).*/\1/g;
+        $dir =~ s/^(.*\\)(.*)/\1/g;
+
+        $fileName = $file;
+        $fileName =~ s/^(.*\\)(.*)/\2/g;
 
         # DEBUG
         # print("File: $file\n");
@@ -289,24 +295,31 @@ sub editSongs {
 
         $fileContents = join("\n",@fileContentArray); chomp $fileContents;
 
+        close SONG;
+
         #######################################################
         # if file matches field+previous value, let's update it
         if($fileContents =~ m/($field\s*=\s*)$oldValue/){
+            # we're editing this
             push(@alteredFiles,$file);
-            
+
+            $backupFile = ("$dir\\song.bak$epoch.ini");
+            open(BACKUP,">",$backupFile);
+
+            print BACKUP ($fileContents);
+
+            # make the change
+            $fileContents =~ s/($field\s*=\s*)$oldValue/\1$newValue/g;
+
+            unlink($file);
+
+            open(NEWSONG,">",$file);
+            print NEWSONG $fileContents;
+            close NEWSONG;
         }
 
-        $fileContents =~ s/($field\s*=\s*)$oldValue/\1$newValue/g;
-
-        close SONG;
-
-        unlink($file);
-
-        open(NEWSONG,">",$file);
-
-        print NEWSONG $fileContents;
-        close NEWSONG;
     }
+        #######################################################
 
     green("\nFinished!\n\n");
 
