@@ -2,13 +2,13 @@
 # Chart retagger - dr3v
 #####
 # To-do:
-# - alter backup logic to only backup files queued for editing!!!
-# ---- leave logic in to take "latestBackup" if it doesn't already exist, couldn't hurt
-# - add communication about initial backup files...
+# x alter backup logic to only backup files queued for editing!!!
+# xxxx leave logic in to take "latestBackup" if it doesn't already exist, couldn't hurt
+# x add communication about initial backup files...
 # - add communication about which files are going to be edited before committing
 # - research/resolve genre names with spaces between each char?
 # - investigate + fix "file/dir" incorrect errors when reading files
-# - allow multiple-value entry for editable field values
+# x allow multiple-value entry for editable field values
 ################################
 use Win32::Console::ANSI;
 use Term::ANSIColor;
@@ -16,17 +16,24 @@ use Term::ANSIColor;
 print color('reset');
 
 ################
-# Misc vars
+# Misc vars/options
 @exitP = ('x','exit','bye','quit');
+$debugMode = 1;
 
 ############################
 # Get list of song.ini files
-green("Reading files....this may take a minute.\n");
+green("Creating backups for all song.ini files without an existing backup...\nThis may take a minute...\n\n");
+
 $iniList = (`dir /s/b *song.ini`); chomp $iniList;
 @iniFiles = split("\n",$iniList);
 
 ###########################################
 # Create backups of all song.ini files, just in case
+
+if($debugMode){
+    open(LOGFILE,">","chartRetagger.log");
+}
+
 foreach(@iniFiles){
     $file = $_;
     $dir = $file;
@@ -38,19 +45,15 @@ foreach(@iniFiles){
     ## debug
     # print $dir . "\n";
 
-    if(-e "$dir\\song.latestBackup.ini"){
-        # DEBUG
-        # print("IT THERE!!");
+    if($debugMode){
+        print LOGFILE ("Found song.ini: $file\n");
+    };
 
-        unlink("$dir/song.latestBackup.ini");
-        `copy "$file" "$dir\\song.latestBackup.ini"`;
-        # `copy "$file" "$dir\\song.bak$epoch.ini"`;
+    # If an "originalBackup" file doesn't exist, make one
+    if(-e "$dir\\song.originalBackup.ini"){
+        # don't do anything
     } else {
-        # DEBUG
-        # "naaaaaaaaaah";
-
-        `copy "$file" "$dir\\song.latestBackup.ini"`;
-        # `copy "$file" "$dir\\song.bak$epoch.ini"`;
+        `copy "$file" "$dir\\song.originalBackup.ini"`;
     };
 }
 
@@ -132,7 +135,7 @@ STARTPROG:
 
 green("Welcome to chartRetagger! Enter 'exit/bye/x/quit' at any ");
 blue("input prompt ");
-green("to quit the program.\nPress ENTER to show list of editable chart fields.\n");
+green("to quit the program.\nPress ENTER to show list of editable chart fields.\n\n");
 
 $welcomeRes = (<STDIN>); chomp $welcomeRes;
 
@@ -189,26 +192,48 @@ green("\nThese are the values from all songs that matched your field search:\n\n
 
 print($matches);
 
-blue("\n\nWhat value would you like to change? ");
+blue("\n\nSpecify the values you would like to change (case sensitive, separated by commas): ");
 
 $editValue = (<STDIN>); chomp $editValue;
+
+@editList = split(/,\s*/,$editValue);
+$editValueSearch = join("|",@editList);
 
 # DEBUG
 # print("\n\ntest val:$editValue\n\n");
 
 # Check if request is valid
 
+@editList = grep{m/^$editValueSearch$/} @validVals;
+$validSearch = join(", ",@editList);
+
+
 if(grep {m/$editValue/} @exitP){
     exitSub();
-} elsif (grep {/$editValue/} @validVals) {
-    # we're good
-    
-    # DEBUG
-    # print("yayayaya");
-} else {
+} elsif (@editList == 0) {
     clearScr();
-    red("\n" . '"' . $editValue . '"' . " is not a valid value from the matched field list. Try again!\n");
+
+    red("\nYou did not enter any valid ");
+    blue("$editField ");
+    red("values. Try again!\n");
     goto VALUEASK;
+} else {
+    # we're good
+    green("\nThese are the values you're going to change: ");
+    yellow("$validSearch. ");
+    blue("\n\nProcede (y/n)? ");
+
+    my $continue = (<STDIN>); chomp $continue;
+    
+    if(grep {m/^$continue$/} @exitP){
+        exitSub();
+    } elsif ($continue eq "n"){
+        clearScr();
+        goto VALUEASK;
+    } else {
+        # green("");
+    };
+
 }
 
 ##################
@@ -218,8 +243,8 @@ if(grep {m/$editValue/} @exitP){
 ##########
 # Ask what to replace the current value with
 blue("\nReplace ");
-yellow($editValue);
-blue(" with: ");
+yellow($validSearch);
+blue(" with (single value): ");
 
 $replaceValue = (<STDIN>); chomp $replaceValue;
 
@@ -236,7 +261,7 @@ ASKFINAL:
 green("You're about to replace all ");
 yellow("$editField ");
 green("values matching ");
-yellow("$editValue ");
+yellow("$validSearch ");
 green("in your song.ini files with ");
 yellow("$replaceValue...\n\n");
 
@@ -253,7 +278,7 @@ if($finalConfirm eq "n" || $finalConfirm eq "no"){
     # DEBUG
     # print("\n\nfield: $editField\nold value: $editValue\nnew value: $replaceValue\n\n");
 
-    editSongs($editField,$editValue,$replaceValue);
+    editSongs($editField,$validSearch,$replaceValue);
 } else {
     red("\n" . '"' . $finalConfirm . '"' . " is not a valid response! Try again.\n\n");
     goto ASKFINAL;
@@ -279,6 +304,9 @@ sub editSongs {
     my @iniFiles = split("\n",$iniList);
 
     @alteredFiles = ();
+
+    # Split multiple values
+    $oldValueSearch = join("|",@editList);
 
     foreach(@iniFiles){
         $file = $_; chomp $file;
@@ -307,7 +335,7 @@ sub editSongs {
 
         #######################################################
         # if file matches field+previous value, let's update it
-        if($fileContents =~ m/($field\s*=\s*)$oldValue/){
+        if($fileContents =~ m/($field\s*=\s*)($oldValueSearch)/){
             # we're editing this
             push(@alteredFiles,$file);
 
@@ -358,6 +386,11 @@ sub editSongs {
 }
 
 sub exitSub(){
+
+    if($debugMode){
+        close LOGFILE;
+    }
+
     green("\nGoodbye!\n");
     exit;
 }
@@ -396,5 +429,11 @@ sub yellow {
 
 sub clearScr (){
     #clear the screen
-    print "\033[2J";
+    
+    if($debugMode){
+        # don't do it
+    } else {
+        print "\033[2J";
+    }
+
 }
