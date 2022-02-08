@@ -1,4 +1,4 @@
-################################
+###############################
 # Chart retagger - dr3v
 #####
 # To-do:
@@ -10,8 +10,9 @@
 # xxxx it's something to do with file encoding.. list prints fine now, idk if all errors are resolved.
 # x investigate + fix "file/dir" incorrect errors when reading files
 # x allow multiple-value entry for editable field values
-# - create restore-backup routine
-# - allow user to edit one field based on a search for another (i.e. edit all "genre" tags for a single artist)
+# x create restore-backup routine
+# - turn the various color-specific output subs to a single argument-based subroutine
+# - (low priority) allow user to edit one field based on a search for another (i.e. edit all "genre" tags for a single artist)
 ################################
 use Win32::Console::ANSI;
 use Term::ANSIColor;
@@ -23,6 +24,7 @@ print color('reset');
 # Misc vars/options
 @exitP = ('x','exit','bye','quit');
 $debugMode = 0;
+$lineBar = ("------------------------------------------------------------");
 
 ############################
 # Get list of song.ini files
@@ -82,6 +84,9 @@ foreach(@iniFiles){
     };
 }
 
+###########################################################
+# Choose to continue script or initiate backup-restore mode
+green("");
 
 # If there's a problem file, let the user know
 if(-e "errorFiles.log"){
@@ -224,9 +229,24 @@ STARTPROG:
 
 green("Welcome to chartRetagger! Enter 'exit/bye/x/quit' at any ");
 blue("input prompt ");
-green("to quit the program.\nPress ENTER to show list of editable chart fields.\n");
+green("to quit the program.\n\nPress ");
+yellow("ENTER ");
+green("to show list of editable chart fields.");
+green("\nType ");
+yellow("restore backups");
+green(" to enter the backup restoration mode!\n\n");
 
+blue("");
 $welcomeRes = (<STDIN>); chomp $welcomeRes;
+
+if($welcomeRes eq "restore backups"){
+    backupRestore();
+} elsif (grep {m/^$welcomeRes$/} @exitP) {
+    exitSub();
+} else {
+    clearScr();
+    # do nothin
+}
 
 ####################################
 # Cleaning process... this is a mess
@@ -271,7 +291,7 @@ $editField = <STDIN>; chomp $editField;
 if (grep {m/^$editField$/} @fields){
     # mainRoutine($editField);
     clearScr();
-} elsif (grep {m/$editField/} @exitP){
+} elsif (grep {m/^$editField$/} @exitP){
     exitSub();
 } else {
     clearScr();
@@ -308,13 +328,18 @@ blue("\n\nSpecify the values you would like to change (case sensitive, separated
 $editValue = (<STDIN>); chomp $editValue;
 
 @editList = split(/,\s*/,$editValue);
+
+foreach(@editList){
+    chomp $_;
+}
+
 $editValueSearch = join("|",@editList);
 
 # DEBUG
 # print("\n\ntest val:$editValue\n\n");
 
 # Check if request is valid
-@editList = grep{m/^$editValueSearch$/} @validVals;
+@editList = grep{m/^($editValueSearch)$/} @validVals;
 $validSearch = join(", ",@editList);
 
 if(grep {m/$editValue/} @exitP){
@@ -331,8 +356,10 @@ if(grep {m/$editValue/} @exitP){
     green("\nThese are the values you're going to change: ");
     yellow("$validSearch. ");
 
+    $printListValSearch = join("|",@editList);
+
     # Go fetch song list and then ask user to confirm in the section that follows
-    printSongs($editField,$editValueSearch);
+    printSongs($editField,$printListValSearch);
 
     # blue("\n\nProceed (y/n)? ");
 
@@ -374,7 +401,7 @@ sub printSongs {
         }
 
         # If the file contains likes with our desired field and any of our values, we flag it
-        if(grep {m/$field\s*=\s*$valueSearch/} @thisFileLines){
+        if(grep {m/^$field\s*=\s*($valueSearch)$/} @thisFileLines){
             $editing = 1;
         }
 
@@ -520,11 +547,11 @@ sub editSongs {
 
             $backupFile = ("$dir\\song.bak$epoch.ini");
             open(BACKUP,">",$backupFile);
-
             print BACKUP ($fileContents);
+            close BACKUP;
 
             # make the change
-            $fileContents =~ s/($field\s*=\s*)$oldValue/\1$newValue/g;
+            $fileContents =~ s/($field\s*=\s*)($oldValueSearch)/\1$newValue/g;
 
             unlink($file);
 
@@ -534,15 +561,17 @@ sub editSongs {
         }
 
     }
-        #######################################################
+    
+    #######################################################
 
+    clearScr();
     green("\nFinished!\n\n");
 
     $updatedFiles = (join("\n",@alteredFiles));
     chomp $updatedFiles;
 
     green("Updated files:\n");
-    yellow($updatedFiles . "\n");
+    yellow($updatedFiles . "\n\n");
 
     #########################
     # Ask to edit more songs
@@ -560,16 +589,19 @@ sub editSongs {
     #     exitSub;
     # }
 
-    exitSub();
+    green("Done!\n");
 
 }
 
+##############
+# Exit program
 sub exitSub(){
 
     if($debugMode){
         close LOGFILE;
     }
 
+    clearScr();
     green("\nGoodbye!\n");
     exit;
 }
@@ -580,7 +612,7 @@ sub exitSub(){
 sub green {
     my $message = $_[0];
 
-    print color('green');
+    print color('bright_green');
     print ($message);
     print color ('reset');
 }
@@ -609,6 +641,8 @@ sub yellow {
     print color ('reset');
 }
 
+##################
+# Clear the screen
 sub clearScr (){
     #clear the screen
     
@@ -617,5 +651,58 @@ sub clearScr (){
     } else {
         print "\033[2J";
     }
+
+}
+
+#################
+# Restore all backups
+sub backupRestore {
+    clearScr();
+    green("Welcome to the backup-restore mode. Reading files...\n\n");
+
+    my $iniList = (`dir /s/b *song.ini`); chomp $iniList;
+    my @iniFiles = split("\n",$iniList);
+
+    green("This process is going to replace all recursively found charts with their original backups, which were created the first time you ran this script...\n\n");
+
+    blue("Continue (y/n)? ");
+
+    my $continue = (<STDIN>); chomp $continue;
+
+    if($continue eq "y" || $continue eq "yes"){
+        # continue with backup-restore
+        $epoch = time();
+    } else {
+        exitSub();
+    }
+
+    my @backedupFiles = ();
+
+    # check for original backups and move them in to replace song.inis
+    foreach(@iniFiles){
+        my $file = $_; chomp $file;
+        my $dir = $file;
+        $dir =~ s/^(.*\\).*/\1/g;
+
+        if(-e "$dir/song.originalBackup.ini"){
+            `move "$file" "$dir\\$epoch-song.backupRestore.ini"` or die (print $!);;
+            `copy "$dir\\song.originalBackup.ini" "$dir\\song.ini"` or die (print $!);
+
+            push(@backedupFiles,$file);
+        }
+
+    }
+
+    $restoredBackups = join("\n",@backedupFiles); chomp $restoredBackups;
+
+    $backLogFile = ("restoredFiles.log");
+    open(RESBACK,">>",$backLogFile);
+    print RESBACK ("$lineBar\n$epoch \Restored backup files:\n$restoredBackups\n\n");
+    close RESBACK;
+
+    green("\nYou successfully restored the original backups for your song.ini's. See $backLogFile for more details.\n\n");
+
+    green("Goodbye!\n\n");
+    exit();
 
 }
