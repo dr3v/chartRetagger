@@ -387,6 +387,7 @@ sub printSongs {
     my $valueSearch = $_[1];
 
     @songsToEdit = ();
+    @filesToEdit = ();
 
     foreach(@iniFiles){
         my $editing = 0;
@@ -422,6 +423,7 @@ sub printSongs {
             $genre =~ s/^.*genre\s*=\s*(.+)$/\1/g; chomp $genre;
 
             push(@songsToEdit,"($genre) $artist - $title");
+            push(@filesToEdit,$iniFile);
             # print("$artist - $title\n");
         }
 
@@ -482,9 +484,11 @@ if($finalConfirm eq "n" || $finalConfirm eq "no"){
     # proceed
 
     # DEBUG
-    # print("\n\nfield: $editField\nold value: $editValue\nnew value: $replaceValue\n\n");
+    # print("\n\neditField: $editField\nold values: $editValue\nnew value: $replaceValue\n\n");
+    # sleep 1000;
 
     editSongs($editField,$validSearch,$replaceValue);
+    
 } else {
     red("\n" . '"' . $finalConfirm . '"' . " is not a valid response! Try again.\n\n");
     goto ASKFINAL;
@@ -513,6 +517,13 @@ sub editSongs {
 
     # Split multiple values
     $oldValueSearch = join("|",@editList);
+    chomp $oldValueSearch;
+    # $oldValue =~ s/,\s*/"|"/g;
+
+    # DEBUG
+    # print("\n\n$oldValueSearch\n\n"); sleep 1000;
+
+    @iniFiles = grep {//} @filesToEdit;
 
     foreach(@iniFiles){
         $file = $_; chomp $file;
@@ -527,7 +538,7 @@ sub editSongs {
         # print("File: $file\n");
         # print("Dir: $dir\n");
 
-        open(SONG,'<',"$file");
+        open(SONG,'<',$file);
 
         @fileContentArray = ();
         while(<SONG>){
@@ -540,25 +551,25 @@ sub editSongs {
         close SONG;
 
         #######################################################
-        # if file matches field+previous value, let's update it
-        if($fileContents =~ m/($field\s*=\s*)($oldValueSearch)/){
-            # we're editing this
-            push(@alteredFiles,$file);
+        # Start value replacement process
+        push(@alteredFiles,$file);
 
-            $backupFile = ("$dir\\song.bak$epoch.ini");
-            open(BACKUP,">",$backupFile);
-            print BACKUP ($fileContents);
-            close BACKUP;
+        # Backup existing song.ini
+        $backupFile = ("$dir\\song.backup$epoch.ini");
+        open(BACKUP,">",$backupFile);
+        print BACKUP ($fileContents);
+        close BACKUP;
 
-            # make the change
-            $fileContents =~ s/($field\s*=\s*)($oldValueSearch)/\1$newValue/g;
+        # make the change
+        $fileContents =~ s/($field\s*=\s*)($oldValueSearch)/\1$newValue/g;
 
-            unlink($file);
+        # delete old song.ini
+        unlink($file);
 
-            open(NEWSONG,">",$file);
-            print NEWSONG $fileContents;
-            close NEWSONG;
-        }
+        # make the new, edited one
+        open(NEWSONG,">",$file);
+        print NEWSONG $fileContents;
+        close NEWSONG;
 
     }
     
@@ -685,7 +696,7 @@ sub backupRestore {
         $dir =~ s/^(.*\\).*/\1/g;
 
         if(-e "$dir/song.originalBackup.ini"){
-            `move "$file" "$dir\\$epoch-song.backupRestore.ini"` or die (print $!);;
+            `move "$file" "$dir\\song.backup$epoch.ini"` or die (print $!);;
             `copy "$dir\\song.originalBackup.ini" "$dir\\song.ini"` or die (print $!);
 
             push(@backedupFiles,$file);
@@ -697,7 +708,7 @@ sub backupRestore {
 
     $backLogFile = ("restoredFiles.log");
     open(RESBACK,">>",$backLogFile);
-    print RESBACK ("$lineBar\n$epoch \Restored backup files:\n$restoredBackups\n\n");
+    print RESBACK ("$lineBar\n$epoch Restored backup files:\n$restoredBackups\n\n");
     close RESBACK;
 
     green("\nYou successfully restored the original backups for your song.ini's. See $backLogFile for more details.\n\n");
